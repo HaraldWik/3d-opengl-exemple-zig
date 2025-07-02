@@ -1,7 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const sdl = @import("sdl3");
-const gl = @import("opengl.zig");
+const gfx = @import("gfx.zig");
 const nz = @import("numz");
 const obj = @import("obj.zig");
 const ecs = @import("ecs.zig");
@@ -28,9 +28,9 @@ pub fn Transform(T: type) type {
 }
 
 pub const Renderable = struct {
-    pipeline: *const gl.Pipeline,
-    texture: ?gl.Texture = null,
-    object: *const gl.Object,
+    pipeline: *const gfx.Pipeline,
+    texture: ?gfx.Texture = null,
+    object: *const gfx.Object,
 };
 
 pub const RandomRotate = struct {
@@ -59,30 +59,35 @@ pub fn main() !void {
     });
     defer window.deinit();
 
-    const context = try gl.Context.init(window);
+    const context = try gfx.Context.init(window);
     defer context.deinit();
 
     const allocator = std.heap.page_allocator;
 
-    const texture = try gl.Texture.init("./assets/grass/diff.jpg");
-    defer texture.deinit();
+    const bush_texture = try gfx.Texture.init("./assets/textures/bush.jpg");
+    defer bush_texture.deinit();
 
-    const cube_texture = try gl.Texture.init("./assets/textures/basket_diff.jpg");
+    const grass_texture = try gfx.Texture.init("./assets/textures/grass_diff.jpg");
+    defer grass_texture.deinit();
+    const cube_texture = try gfx.Texture.init("./assets/textures/basket_diff.jpg");
     defer cube_texture.deinit();
+
+    const bush_data = try obj.Obj.init(allocator, "./assets/models/xyzdragon.obj");
+    defer bush_data.deinit();
+    const bush = try gfx.Object.init(bush_data.vertices, bush_data.indices);
+    defer bush.deinit();
 
     const cube_data = try obj.Obj.init(allocator, "./assets/models/basket.obj");
     defer cube_data.deinit();
-
-    const cube = try gl.Object.init(cube_data.vertices, cube_data.indices);
+    const cube = try gfx.Object.init(cube_data.vertices, cube_data.indices);
     defer cube.deinit();
 
     const plane_data = try obj.Obj.init(allocator, "./assets/models/quad.obj");
     defer plane_data.deinit();
-
-    const plane = try gl.Object.init(plane_data.vertices, plane_data.indices);
+    const plane = try gfx.Object.init(plane_data.vertices, plane_data.indices);
     defer plane.deinit();
 
-    const default_pipeline = try gl.Pipeline.init(
+    const default_pipeline = try gfx.Pipeline.init(
         @embedFile("./shaders/default.vert"),
         @embedFile("./shaders/default.frag"),
         null,
@@ -97,12 +102,42 @@ pub fn main() !void {
             Transform(f32){
                 .position = cube_positions[i],
                 .rotation = @splat(@floatFromInt(20 * i)),
-                .scale = @splat(20),
+                .scale = @splat(5),
             },
             Renderable{
                 .pipeline = &default_pipeline,
                 .texture = cube_texture,
                 .object = &cube,
+            },
+            RandomRotate{
+                .speed = @floatFromInt(10 * i),
+            },
+        });
+    }
+
+    var seed: u32 = 123456789;
+
+    for (0..4) |i| {
+        seed = seed ^ (1103515245 *% @as(u32, @intCast(i)) +% 12345);
+
+        const rand_x = @as(f32, @floatFromInt(seed & 0x7FFFFFFF)) / 2147483648.0;
+
+        seed = seed ^ (1103515245 *% (@as(u32, @intCast(i)) +% 999) +% 54321);
+        const rand_z = @as(f32, @floatFromInt(seed & 0x7FFFFFFF)) / 2147483648.0;
+
+        const x = rand_x * 1000.0 - 500.0;
+        const z = rand_z * 1000.0 - 500.0;
+
+        _ = try world.spawn(.{
+            Transform(f32){
+                .position = .{ x, x / z + @as(f32, @floatFromInt(i)), z },
+                .rotation = .{ 0, @floatFromInt(20 * i), 0 },
+                .scale = @splat(0.1),
+            },
+            Renderable{
+                .pipeline = &default_pipeline,
+                .texture = bush_texture,
+                .object = &bush,
             },
             RandomRotate{
                 .speed = @floatFromInt(10 * i),
@@ -118,7 +153,7 @@ pub fn main() !void {
         },
         Renderable{
             .pipeline = &default_pipeline,
-            .texture = texture,
+            .texture = grass_texture,
             .object = &plane,
         },
     });
@@ -144,6 +179,9 @@ pub fn main() !void {
 
         const delta_time = getDeltaTime();
 
+        const fps = 1.0 / delta_time;
+        std.debug.print("FPS: {d}\n", .{fps});
+
         // const time = @as(f32, @floatFromInt(sdl.c.SDL_GetTicks())) / 1000;
 
         const size = try window.getSize();
@@ -157,7 +195,6 @@ pub fn main() !void {
         try renderSystem(&world);
 
         try context.present();
-        sdl.c.SDL_Delay(10);
     }
 }
 
@@ -195,7 +232,7 @@ pub fn rotateSystem(world: *World, delta_time: f32) !void {
     }
 }
 
-pub fn freeCameraSystem(world: *World, delta_time: f32, pipeline: gl.Pipeline, aspect: f32) !void {
+pub fn freeCameraSystem(world: *World, delta_time: f32, pipeline: gfx.Pipeline, aspect: f32) !void {
     var it = world.query(&[_]type{ Transform(f32), FreeCamera });
     while (it.next()) |item| {
         const transform = item.get(Transform(f32));
@@ -275,99 +312,12 @@ pub fn freeCameraSystem(world: *World, delta_time: f32, pipeline: gl.Pipeline, a
         view = view.mul(nz.Mat4(f32).rotate(std.math.degreesToRadians(yaw.*), .{ 0, 1, 0 }));
         view = view.mul(nz.Mat4(f32).translate(transform.position));
 
-        const projection = nz.Mat4(f32).perspective(std.math.degreesToRadians(45.0), aspect, 1, 4000.0);
+        const projection = nz.Mat4(f32).perspective(std.math.degreesToRadians(45.0), aspect, 4, 4000.0);
 
         try pipeline.setUniform("u_projection", .{ .mat4 = .{ projection.d, false } });
         try pipeline.setUniform("u_view", .{ .mat4 = .{ view.d, false } });
     }
 }
-
-pub const Camera = struct {
-    const Self = @This();
-
-    speed: f32 = 50,
-    sensitivity: f32 = 0.1,
-    position: nz.Vec3(f32) = .{ 0.0, 0.0, 5.0 },
-    yaw: f32 = 0,
-    pitch: f32 = 0,
-    was_rotating: bool = false,
-
-    pub fn update(self: *Self, delta_time: f32) !nz.Mat4(f32) {
-        const mouse = sdl.mouse.getState();
-
-        const rel = sdl.mouse.getRelativeState();
-
-        if (mouse.flags.right) {
-            try sdl.mouse.hide();
-
-            self.yaw += rel.x * self.sensitivity;
-            self.pitch += rel.y * self.sensitivity;
-            self.was_rotating = true;
-        } else if (self.was_rotating) {
-            _ = sdl.mouse.getRelativeState();
-            self.was_rotating = false;
-            try sdl.mouse.show();
-        }
-
-        self.pitch = std.math.clamp(self.pitch, -89.9, 89.9);
-
-        const keyboard = sdl.keyboard.getState();
-
-        const yaw_rad = std.math.degreesToRadians(self.yaw);
-        const pitch_rad = std.math.degreesToRadians(self.pitch);
-
-        // Forward direction (where you're looking)
-        const forward = nz.normalize(nz.Vec3(f32){
-            @cos(pitch_rad) * @sin(yaw_rad),
-            -@sin(pitch_rad),
-            -@cos(pitch_rad) * @cos(yaw_rad),
-        });
-
-        const right = nz.normalize(nz.cross(forward, nz.Vec3(f32){ 0, 1, 0 }));
-
-        const up = nz.normalize(nz.cross(right, forward));
-
-        var move = nz.Vec3(f32){ 0, 0, 0 };
-        const velocity = self.speed * delta_time;
-
-        if (keyboard[@intFromEnum(sdl.Scancode.w)])
-            move -= nz.scale(forward, velocity);
-        if (keyboard[@intFromEnum(sdl.Scancode.s)])
-            move += nz.scale(forward, velocity);
-        if (keyboard[@intFromEnum(sdl.Scancode.a)])
-            move += nz.scale(right, velocity);
-        if (keyboard[@intFromEnum(sdl.Scancode.d)])
-            move -= nz.scale(right, velocity);
-        if (keyboard[@intFromEnum(sdl.Scancode.space)])
-            move -= nz.scale(up, velocity);
-        if (keyboard[@intFromEnum(sdl.Scancode.left_ctrl)])
-            move += nz.scale(up, velocity);
-
-        if (keyboard[@intFromEnum(sdl.Scancode.up)])
-            self.speed += 10;
-        if (keyboard[@intFromEnum(sdl.Scancode.down)])
-            self.speed -= 10;
-
-        const speed_multiplier: f32 = @floatFromInt(@intFromBool(keyboard[@intFromEnum(sdl.Scancode.left_shift)]));
-
-        self.speed = std.math.clamp(self.speed, 0, 1000);
-
-        self.position += nz.scale(move, speed_multiplier + 1);
-
-        if (keyboard[@intFromEnum(sdl.Scancode.r)]) {
-            self.yaw = 0;
-            self.pitch = 0;
-            self.position = .{ 0, 0, 0 };
-        }
-
-        var view = nz.Mat4(f32).identity(1);
-        view = view.mul(nz.Mat4(f32).rotate(std.math.degreesToRadians(self.pitch), .{ 1, 0, 0 }));
-        view = view.mul(nz.Mat4(f32).rotate(std.math.degreesToRadians(self.yaw), .{ 0, 1, 0 }));
-        view = view.mul(nz.Mat4(f32).translate(self.position));
-
-        return view;
-    }
-};
 
 var last_time: u64 = 0;
 

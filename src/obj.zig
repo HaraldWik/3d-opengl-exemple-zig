@@ -102,9 +102,11 @@ pub const Obj = struct {
 
                     if (face_vertices.items.len >= 3) {
                         for (1..face_vertices.items.len - 1) |i| {
-                            try indices.append(face_vertices.items[0]);
-                            try indices.append(face_vertices.items[i]);
-                            try indices.append(face_vertices.items[i + 1]);
+                            try indices.appendSlice(&[_]u32{
+                                face_vertices.items[0],
+                                face_vertices.items[i],
+                                face_vertices.items[i + 1],
+                            });
                         }
                     }
                 },
