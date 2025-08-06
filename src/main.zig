@@ -1,10 +1,10 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const ecs = @import("ecs.zig");
 const sdl = @import("sdl3");
 const gfx = @import("gfx.zig");
 const nz = @import("numz");
-const obj = @import("obj.zig");
-const ecs = @import("ecs.zig");
+const Obj = @import("Obj.zig");
 
 const cube_positions = [_]nz.Vec3(f32){
     .{ 0.0, 10.0, 0.0 },
@@ -72,18 +72,18 @@ pub fn main() !void {
     const cube_texture = try gfx.Texture.init("./assets/textures/basket_diff.jpg");
     defer cube_texture.deinit();
 
-    const bush_data = try obj.Obj.init(allocator, "./assets/models/xyzdragon.obj");
+    const bush_data = try Obj.init(allocator, "./assets/models/xyzdragon.obj");
     defer bush_data.deinit();
     const bush = try gfx.Object.init(bush_data.vertices, bush_data.indices);
     defer bush.deinit();
 
-    const cube_data = try obj.Obj.init(allocator, "./assets/models/basket.obj");
-    defer cube_data.deinit();
+    const cube_data = try Obj.init(allocator, "./assets/models/basket.obj");
+    defer cube_data.deinit(allocator);
     const cube = try gfx.Object.init(cube_data.vertices, cube_data.indices);
     defer cube.deinit();
 
-    const plane_data = try obj.Obj.init(allocator, "./assets/models/quad.obj");
-    defer plane_data.deinit();
+    const plane_data = try Obj.init(allocator, "./assets/models/quad.obj");
+    defer plane_data.deinit(allocator);
     const plane = try gfx.Object.init(plane_data.vertices, plane_data.indices);
     defer plane.deinit();
 
