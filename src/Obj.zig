@@ -16,11 +16,11 @@ pub fn init(
     var lines = std.mem.tokenizeAny(u8, tok_buffer, "\n");
 
     var positions: std.ArrayListUnmanaged(f32) = .empty;
-    defer positions.deinit();
+    defer positions.deinit(allocator);
     var uvs: std.ArrayListUnmanaged(f32) = .empty;
-    defer uvs.deinit();
+    defer uvs.deinit(allocator);
     var normals: std.ArrayListUnmanaged(f32) = .empty;
-    defer normals.deinit();
+    defer normals.deinit(allocator);
 
     var vertices: std.ArrayListUnmanaged(f32) = .empty;
     var indices: std.ArrayListUnmanaged(u32) = .empty;
@@ -51,7 +51,7 @@ pub fn init(
 
             'f' => {
                 var face_vertices: std.ArrayListUnmanaged(u32) = .empty;
-                defer face_vertices.deinit();
+                defer face_vertices.deinit(allocator);
 
                 var faces = std.mem.splitAny(u8, line[2..], " ");
                 while (faces.next()) |face| {
@@ -78,8 +78,8 @@ pub fn init(
                                 uvs.items[uv_idx * 2 + 0],
                                 uvs.items[uv_idx * 2 + 1],
                             });
-                        } else try vertices.appendSlice(&.{ 0, 0 });
-                    } else try vertices.appendSlice(&.{ 0, 0 });
+                        } else try vertices.appendSlice(allocator, &.{ 0, 0 });
+                    } else try vertices.appendSlice(allocator, &.{ 0, 0 });
 
                     if (it.next()) |normal| {
                         const normal_idx = try std.fmt.parseInt(usize, std.mem.trim(u8, normal, " \n\r\t"), 10) - 1;

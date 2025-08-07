@@ -1,28 +1,27 @@
 .{
-    .name = .game_engine,
+    .name = .GameEngineZigTest,
     .version = "0.0.0",
-    .fingerprint = 0x959db7458bc81417,
-    .minimum_zig_version = "0.15.0-dev.1219+b8955a2e0",
+    .fingerprint = 0x766faae1bd029260,
+    .minimum_zig_version = "0.15.0-dev.1380+e98aeeb73",
     .dependencies = .{
-        .sdl3 = .{
-            .url = "git+https://github.com/rplstr/zig-sdl3-master#85f87955d14764121a7deaa0590370228004b0e3",
-            .hash = "sdl3-0.0.1-NmT1QxmtHgClb-lMOw-Pstc7gRpMHC8cPXk8TYsBuPYe",
-        },
-        .zigglgen = .{
-            .url = "git+https://github.com/DialecticalMaterialist/zigglgen#d613e0639b56092bff02d9ac0efeaca896edf629",
-            .hash = "zigglgen-0.4.0-bmyqLfdALQA6W_TMyMhtaivXIHmO_eMlHcnz3bE_qbGY",
+        .sdl = .{
+            .url = "git+https://github.com/castholm/SDL#0f81c0affb2584b242b2fb5744e7dfebcfd904a5",
+            .hash = "sdl-0.2.6+3.2.20-7uIn9JkjfwGIQ6j3-etow2rCe-Zt16Yj-2gdp9jW7WZ9",
         },
         .numz = .{
-            .url = "git+https://github.com/HaraldWik/numz#4dc6488aefee019d90056d724f88f8f48e5720db",
-            .hash = "numz-0.0.0-oTBeDDJKAADfBORjX83KjwR2Av9W3LyjCU4zlymx_LyT",
+            .url = "git+https://github.com/HaraldWik/numz#09ab1b2f10f7142bf356111d4b08857b359eefb7",
+            .hash = "numz-0.0.0-oTBeDBxNAABufiHTzxEuz5P8g8EgKFLhnU4HKcRK9glZ",
+        },
+        .zigglgen = .{
+            .url = "git+https://github.com/castholm/zigglgen#f19acc6a78aa4429917341f9bacc73346db21b73",
+            .hash = "zigglgen-0.4.0-bmyqLQ3sLQCP7RyluOjtnnbkbL56JCNeIYDu6odBTQCv",
         },
     },
     .paths = .{
         "build.zig",
         "build.zig.zon",
         "src",
-        // For example...
         //"LICENSE",
-        //"README.md",
+        "README.md",
     },
 }

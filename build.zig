@@ -4,12 +4,25 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const sdl_mod = b.dependency("sdl3", .{ .target = target, .optimize = optimize, .ext_image = true }).module("sdl3");
+    const sdl = b.dependency("sdl", .{
+        .target = target,
+        .optimize = optimize,
+        .lto = optimize != .Debug,
+        .preferred_linkage = .dynamic,
+    });
+    const sdl_translate_c = b.addTranslateC(.{
+        .root_source_file = sdl.path("include/SDL3/SDL.h"),
+        .target = target,
+        .optimize = optimize,
+    });
+    sdl_translate_c.addIncludePath(sdl.path("include"));
 
-    const gl_mod = @import("zigglgen").generateBindingsModule(b);
-    // .version = .@"4.6",
-    // .profile = .core,
-    // .extensions = &.{ .ARB_clip_control, .NV_scissor_exclusive },
+    const gl_mod = @import("zigglgen").generateBindingsModule(b, .{
+        .api = .gl,
+        .version = .@"4.1",
+        .profile = .core,
+        .extensions = &.{ .ARB_clip_control, .NV_scissor_exclusive },
+    });
 
     const numz_mod = b.dependency("numz", .{ .target = target, .optimize = optimize }).module("numz");
 
@@ -20,12 +33,15 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "sdl3", .module = sdl_mod },
+                .{ .name = "sdl", .module = sdl_translate_c.createModule() },
                 .{ .name = "gl", .module = gl_mod },
                 .{ .name = "numz", .module = numz_mod },
             },
+            .link_libc = true,
         }),
     });
+
+    exe.root_module.linkSystemLibrary("SDL3_image", .{}); // This is not a good way of doing this but currently as of writing there is no 'linkSystemLibrary' function for the translate c ¯\_(ツ)_/¯
 
     b.installArtifact(exe);
 

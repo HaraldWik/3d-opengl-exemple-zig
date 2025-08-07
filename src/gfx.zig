@@ -1,37 +1,44 @@
 const std = @import("std");
 const log = @import("std").log;
-const sdl = @import("sdl3");
+const sdl = @import("sdl");
 pub const gl = @import("gl");
+const sdl_img = @cImport(@cInclude("SDL3_image/SDL_image.h")); // TODO: remove C import, for more information read 'build.zig'
 
 pub const Context = struct {
     const Self = @This();
 
     var procs: gl.ProcTable = undefined;
 
-    window: sdl.video.Window,
+    window: ?*sdl.SDL_Window,
 
-    pub fn init(window: sdl.video.Window) !Self {
-        if (!procs.init(sdl.c.SDL_GL_GetProcAddress)) return error.InitFailed;
+    pub fn init(window: ?*sdl.SDL_Window) !Self {
+        if (!procs.init(sdl.SDL_GL_GetProcAddress)) return error.InitFailed;
         gl.makeProcTableCurrent(&procs);
 
-        _ = try sdl.video.gl.Context.init(window);
+        if (!sdl.SDL_GL_SetAttribute(sdl.SDL_GL_CONTEXT_MAJOR_VERSION, 4) or
+            !sdl.SDL_GL_SetAttribute(sdl.SDL_GL_CONTEXT_MINOR_VERSION, 6) or
+            !sdl.SDL_GL_SetAttribute(sdl.SDL_GL_CONTEXT_PROFILE_MASK, sdl.SDL_GL_CONTEXT_PROFILE_CORE) or
+            !sdl.SDL_GL_SetAttribute(sdl.SDL_GL_DEPTH_SIZE, 100) or
+            !sdl.SDL_GL_SetAttribute(sdl.SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, 1))
+            return error.SdlSetOpenGLAttribute;
 
-        try sdl.video.gl.setAttribute(.depth_size, 100);
-        try sdl.video.gl.setAttribute(.framebuffer_srgb_capable, 1);
+        _ = sdl.SDL_GL_CreateContext(window);
 
         return .{ .window = window };
     }
 
     pub fn deinit(_: Self) void {
-        const gl_context = sdl.video.gl.getCurrentContext() catch unreachable;
-        gl_context.deinit() catch unreachable;
+        const gl_context = sdl.SDL_GL_GetCurrentContext();
+        _ = sdl.SDL_GL_DestroyContext(gl_context);
 
         gl.makeProcTableCurrent(null);
     }
 
     pub fn clear(self: Self) !void {
-        const size = try self.window.getSize();
-        gl.Viewport(0, 0, @intCast(size.width), @intCast(size.height));
+        var width: c_int = undefined;
+        var height: c_int = undefined;
+        if (!sdl.SDL_GetWindowSize(self.window, &width, &height)) return error.SdlGetWindowSize;
+        gl.Viewport(0, 0, width, height);
         gl.Enable(gl.FRAMEBUFFER_SRGB);
         gl.Enable(gl.DEPTH_TEST);
         gl.Enable(gl.CULL_FACE);
@@ -41,7 +48,7 @@ pub const Context = struct {
     }
 
     pub fn present(self: Self) !void {
-        try sdl.video.gl.swapWindow(self.window);
+        if (!sdl.SDL_GL_SwapWindow(self.window)) return error.SdlOpenGlSwapWindow;
     }
 };
 
@@ -225,7 +232,7 @@ pub const Texture = struct {
 
     id: u32,
 
-    pub fn init(path: [:0]const u8) !Self {
+    pub fn init(path: [*:0]const u8) !Self {
         var texture: u32 = 0;
         gl.GenTextures(1, @ptrCast(&texture));
         gl.BindTexture(gl.TEXTURE_2D, @intCast(texture));
@@ -235,9 +242,8 @@ pub const Texture = struct {
         gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
         gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
-        const surface = try sdl.image.loadFile(path);
-        defer surface.deinit();
-        gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGB, @intCast(surface.getWidth()), @intCast(surface.getHeight()), 0, gl.RGB, gl.UNSIGNED_BYTE, surface.value.pixels);
+        const surface = sdl_img.IMG_Load(path) orelse return error.LoadImage; // TODO: Change out image loading liberary
+        gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGB, @intCast(surface.*.w), @intCast(surface.*.h), 0, gl.RGB, gl.UNSIGNED_BYTE, surface.*.pixels);
         gl.GenerateMipmap(gl.TEXTURE_2D);
 
         return .{ .id = texture };

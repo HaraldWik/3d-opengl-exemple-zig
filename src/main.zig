@@ -1,10 +1,10 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const ecs = @import("ecs.zig");
-const sdl = @import("sdl3");
 const gfx = @import("gfx.zig");
 const nz = @import("numz");
 const Obj = @import("Obj.zig");
+const sdl = @import("sdl");
 
 const cube_positions = [_]nz.Vec3(f32){
     .{ 0.0, 10.0, 0.0 },
@@ -46,18 +46,11 @@ pub const FreeCamera = struct {
 pub const World = ecs.World(&[_]type{ Transform(f32), Renderable, RandomRotate, FreeCamera });
 
 pub fn main() !void {
-    try sdl.init.init(.{ .video = true });
-    defer sdl.init.shutdown();
+    if (!sdl.SDL_Init(sdl.SDL_INIT_VIDEO)) return error.SdlInit;
+    defer sdl.SDL_Quit();
 
-    try sdl.video.gl.setAttribute(.context_major_version, 4);
-    try sdl.video.gl.setAttribute(.context_minor_version, 6);
-    try sdl.video.gl.setAttribute(.context_profile_mask, @intFromEnum(sdl.video.gl.Profile.core));
-
-    const window = try sdl.video.Window.init("Hello, world!", 900, 800, .{
-        .resizable = true,
-        .open_gl = true,
-    });
-    defer window.deinit();
+    const window = sdl.SDL_CreateWindow("Hello, world!", 900, 800, sdl.SDL_WINDOW_RESIZABLE | sdl.SDL_WINDOW_OPENGL) orelse return error.SdlCreateWindow;
+    defer sdl.SDL_DestroyWindow(window);
 
     const context = try gfx.Context.init(window);
     defer context.deinit();
@@ -73,7 +66,7 @@ pub fn main() !void {
     defer cube_texture.deinit();
 
     const bush_data = try Obj.init(allocator, "./assets/models/xyzdragon.obj");
-    defer bush_data.deinit();
+    defer bush_data.deinit(allocator);
     const bush = try gfx.Object.init(bush_data.vertices, bush_data.indices);
     defer bush.deinit();
 
@@ -170,9 +163,10 @@ pub fn main() !void {
     });
 
     main: while (true) {
-        while (sdl.events.poll()) |event| {
-            switch (event) {
-                .quit, .terminating => break :main,
+        var event: sdl.SDL_Event = undefined;
+        while (sdl.SDL_PollEvent(&event)) {
+            switch (event.type) {
+                sdl.SDL_EVENT_QUIT, sdl.SDL_EVENT_TERMINATING => break :main,
                 else => {},
             }
         }
@@ -184,11 +178,10 @@ pub fn main() !void {
 
         // const time = @as(f32, @floatFromInt(sdl.c.SDL_GetTicks())) / 1000;
 
-        const size = try window.getSize();
-        const aspect = @as(f32, @floatFromInt(size.width)) / @as(f32, @floatFromInt(size.height));
-
         try context.clear();
         default_pipeline.bind();
+
+        const aspect = try getWindowAspect(window);
 
         try freeCameraSystem(&world, delta_time, default_pipeline, aspect);
         try rotateSystem(&world, delta_time);
@@ -196,6 +189,13 @@ pub fn main() !void {
 
         try context.present();
     }
+}
+
+pub fn getWindowAspect(window: ?*sdl.SDL_Window) !f32 {
+    var width: c_int = undefined;
+    var height: c_int = undefined;
+    if (!sdl.SDL_GetWindowSize(window, &width, &height)) return error.SdlGetWindowSize;
+    return @as(f32, @floatFromInt(width)) / @as(f32, @floatFromInt(height));
 }
 
 pub fn renderSystem(world: *World) !void {
@@ -241,25 +241,27 @@ pub fn freeCameraSystem(world: *World, delta_time: f32, pipeline: gfx.Pipeline, 
         const pitch = &transform.rotation[0];
         const yaw = &transform.rotation[1];
 
-        const mouse = sdl.mouse.getState();
+        const mouse = sdl.SDL_GetMouseState(null, null);
 
-        const relative = sdl.mouse.getRelativeState();
+        var relative_x: f32 = undefined;
+        var relative_y: f32 = undefined;
+        _ = sdl.SDL_GetRelativeMouseState(&relative_x, &relative_y);
 
-        if (mouse.flags.right) {
-            try sdl.mouse.hide();
+        if (mouse == sdl.SDL_BUTTON_RIGHT) {
+            if (!sdl.SDL_HideCursor()) return error.SdlHideCursor;
 
-            yaw.* += relative.x * camera.sensitivity;
-            pitch.* += relative.y * camera.sensitivity;
+            yaw.* += relative_x * camera.sensitivity;
+            pitch.* += relative_y * camera.sensitivity;
             camera.was_rotating = true;
         } else if (camera.was_rotating) {
-            _ = sdl.mouse.getRelativeState();
+            _ = sdl.SDL_GetRelativeMouseState(null, null);
             camera.was_rotating = false;
-            try sdl.mouse.show();
+            if (!sdl.SDL_ShowCursor()) return error.SdlShowCursor;
         }
 
         pitch.* = std.math.clamp(pitch.*, -89.9, 89.9);
 
-        const keyboard = sdl.keyboard.getState();
+        const keyboard = sdl.SDL_GetKeyboardState(null);
 
         const yaw_rad = std.math.degreesToRadians(yaw.*);
         const pitch_rad = std.math.degreesToRadians(pitch.*);
@@ -277,31 +279,31 @@ pub fn freeCameraSystem(world: *World, delta_time: f32, pipeline: gfx.Pipeline, 
         var move = nz.Vec3(f32){ 0, 0, 0 };
         const velocity = camera.speed * delta_time;
 
-        if (keyboard[@intFromEnum(sdl.Scancode.w)])
+        if (keyboard[sdl.SDL_SCANCODE_W])
             move -= nz.scale(forward, velocity);
-        if (keyboard[@intFromEnum(sdl.Scancode.s)])
+        if (keyboard[sdl.SDL_SCANCODE_S])
             move += nz.scale(forward, velocity);
-        if (keyboard[@intFromEnum(sdl.Scancode.a)])
+        if (keyboard[sdl.SDL_SCANCODE_A])
             move += nz.scale(right, velocity);
-        if (keyboard[@intFromEnum(sdl.Scancode.d)])
+        if (keyboard[sdl.SDL_SCANCODE_D])
             move -= nz.scale(right, velocity);
-        if (keyboard[@intFromEnum(sdl.Scancode.space)])
+        if (keyboard[sdl.SDL_SCANCODE_SPACE])
             move -= nz.scale(up, velocity);
-        if (keyboard[@intFromEnum(sdl.Scancode.left_ctrl)])
+        if (keyboard[sdl.SDL_SCANCODE_LCTRL])
             move += nz.scale(up, velocity);
 
-        if (keyboard[@intFromEnum(sdl.Scancode.up)])
+        if (keyboard[sdl.SDL_SCANCODE_UP])
             camera.speed += 10;
-        if (keyboard[@intFromEnum(sdl.Scancode.down)])
+        if (keyboard[sdl.SDL_SCANCODE_DOWN])
             camera.speed -= 10;
 
-        const speed_multiplier: f32 = @floatFromInt(@intFromBool(keyboard[@intFromEnum(sdl.Scancode.left_shift)]));
+        const speed_multiplier: f32 = @floatFromInt(@intFromBool(keyboard[sdl.SDL_SCANCODE_LSHIFT]));
 
         camera.speed = std.math.clamp(camera.speed, 0, 1000);
 
         transform.position += nz.scale(move, speed_multiplier + 1);
 
-        if (keyboard[@intFromEnum(sdl.Scancode.r)]) {
+        if (keyboard[sdl.SDL_SCANCODE_R]) {
             yaw.* = 0;
             pitch.* = 0;
             transform.position = .{ 0, 0, 0 };
@@ -322,8 +324,8 @@ pub fn freeCameraSystem(world: *World, delta_time: f32, pipeline: gfx.Pipeline, 
 var last_time: u64 = 0;
 
 pub fn getDeltaTime() f32 {
-    const now = sdl.c.SDL_GetPerformanceCounter();
-    const freq = sdl.c.SDL_GetPerformanceFrequency();
+    const now = sdl.SDL_GetPerformanceCounter();
+    const freq = sdl.SDL_GetPerformanceFrequency();
     const delta_time = @as(f32, @floatFromInt(now - last_time)) / @as(f32, @floatFromInt(freq));
     last_time = now;
     return delta_time;
